@@ -90,6 +90,9 @@ static void build_index_oids(struct repository *repo, struct oid_array *out)
 	struct index_state *istate = repo->index;
 	unsigned int i;
 
+	if (repo_read_index(repo) < 0)
+		die(_("unable to read index"));
+
 	for (i = 0; i < istate->cache_nr; i++) {
 		struct cache_entry *ce;
 
