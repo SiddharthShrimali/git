@@ -67,3 +67,5 @@ struct enumeration_opts {
 	unsigned long min_size;
 	int skip_indexed;
 };
+
+#define ENUMERATION_OPTS_INIT { 0 , 1 }
