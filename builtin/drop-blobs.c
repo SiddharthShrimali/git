@@ -2,13 +2,19 @@
 
 #include "builtin.h"
 #include "config.h"
+#include "cache.h"
 #include "environment.h"
 #include "parse-options.h"
 #include "repository.h"
 #include "string-list.h"
 #include "revision.h"
+#include "read-cache-ll.h"
 #include "promisor-remote.h"
 #include "path-walk.h"
+#include "object.h"
+#include "name-hash.h"
+#include "oid-array.h"
+#include "object-store-ll.h"
 
 /*
  * storing candidate blob that survived all three filters:
@@ -69,3 +75,33 @@ struct enumeration_opts {
 };
 
 #define ENUMERATION_OPTS_INIT { 0 , 1 }
+
+/*
+ * walk the current index once and collect every regular-file blob oid
+ * into a sorted oid_array for O(log n) per-candidate lookup
+ *
+ * submodule entries (S_ISGITLINK) and sparse directory entries
+ * (S_ISSPARSEDIR) are skipped -their oids are not blob oids
+ *
+ */
+
+static void build_index_oids(struct repository *repo, struct oid_array *out)
+{
+	struct index_state *istate = repo->index;
+	unsigned int i;
+
+	for (i = 0; i < istate->cache_nr; i++) {
+		struct cache_entry *ce;
+
+		ce = istate->cache[i];
+		if(S_ISGITLINK(ce->ce_mode))
+			continue;
+		if (S_ISSPARSEDIR(ce->ce_mode))
+			continue;
+
+		oid_array_append(out, &ce->oid);
+	}
+
+	/* oid_array_lookup() requires a sorted array */
+	oid_array_sort(out);
+};
