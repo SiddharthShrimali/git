@@ -40,3 +40,17 @@ static void candidate_list_clear(struct candidate_list *list) {
 	list->nr = 0;
 	list->alloc = 0;
 }
+
+/*
+ * growable array of candidates. Follows Git's ALLOC_GROW convention
+ */
+
+static void candidate_list_append(struct candidate_list *list,
+				const struct object_id *oid,
+				unsigned long size)
+{
+	ALLOC_GROW(list->candidates, list->nr + 1, list->alloc);
+	oidcpy(&list->candidates[list->nr].oid, oid);
+	list->candidates[list->nr].size = size;
+	list->nr++;
+}
