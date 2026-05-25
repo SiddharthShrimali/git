@@ -54,3 +54,18 @@ static void candidate_list_append(struct candidate_list *list,
 	list->candidates[list->nr].size = size;
 	list->nr++;
 }
+
+/*
+ * drop only the blobs whose inflated size is >= min_size bytes
+ * 0 = no size filter - consider all the blobs
+ * user can set via --min-size=<bytes>
+ *
+ * skip blobs whose oids are present in the current index
+ * default: 1. 0 via --include-indexed
+ */
+struct enumeration_opts {
+	unsigned long min_size;
+	int skip_indexed;
+};
+
+#define ENUMERATION_OPTS_INIT { 0 , 1 }
