@@ -31,3 +31,5 @@ struct candidate_list {
 	struct blob_candidate *candidates;
 	size_t nr, alloc;
 }; // a list of suitable candidates
+
+#define CANDIDATE_LIST_INIT { NULL, 0, 0 }
