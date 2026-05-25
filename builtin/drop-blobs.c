@@ -33,3 +33,10 @@ struct candidate_list {
 }; // a list of suitable candidates
 
 #define CANDIDATE_LIST_INIT { NULL, 0, 0 }
+
+static void candidate_list_clear(struct candidate_list *list) {
+	free(list->candidates);
+	list->candidates = NULL;
+	list->nr = 0;
+	list->alloc = 0;
+}
