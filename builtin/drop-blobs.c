@@ -26,3 +26,8 @@ struct blob_candidate {
 	unsigned long size; /* storing the size of the blob to
 				avoid parsing it later (inflated size) */
 };
+
+struct candidate_list {
+	struct blob_candidate *candidates;
+	size_t nr, alloc;
+}; // a list of suitable candidates
