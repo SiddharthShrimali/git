@@ -108,3 +108,21 @@ static void build_index_oids(struct repository *repo, struct oid_array *out)
 	/* oid_array_lookup() requires a sorted array */
 	oid_array_sort(out);
 };
+
+/*
+ * data structure to store enumeration callback data
+ * since the odb_for_each_oid return 0 or 1
+ */
+
+struct enumeration_cb_data {
+	struct repository *repo;
+	const struct enumeration_opts *opts;
+	const struct oid_array *index_oids; // null when skip_indexed =0
+	struct candidate_list *candidates;
+
+	unsigned long skipped_non_blob;
+	unsigned long skipped_promisor;
+	unsigned long skipped_small;
+	unsigned long skipped_indexed;
+	unsigned long errors;
+};
