@@ -154,3 +154,73 @@ struct enumeration_cb_data {
  *
  * The extra delta-expansion cost is saved with Pass 1
  */
+
+static void process_one_object(struct enumeration_cb_data *cb_data,
+			const struct object_id *oid)
+{
+	struct object_info oi = OBJECT_INFO_INIT;
+	enum object_type type = OBJ_BAD;
+	unsigned long size = 0;
+
+	/*
+	 * Promisor filter: objects already under the promisor contract
+	 * should not be re-processed. is_promisor_object() uses an
+	 * internal oidset populated once per process, so it is cheap
+	 * after the first call.
+	 *
+	 * This catches objects in promisor packs that odb_for_each_object
+	 * visits before we can filter at the pack level.
+	 */
+
+	if (is_promisor_object(cb_data->repo, oid)) {
+		cb_data->skipped_promisor++;
+		return;
+	}
+
+	/* Pass 1: type check */
+	oi.typep = &type;
+	oi.sizep = NULL;
+
+	/*
+	 * Object listed in pack index but unreadable. Can happen
+	 * if another process is mid-repack. Count and skip rather
+	 * than die() so a concurrent gc does not abort enumeration.
+	 */
+	if (odb_read_object_info_extended(cb_data->repo->objects, oid, &oi,
+					  OBJECT_INFO_SKIP_FETCH_OBJECT | OBJECT_INFO_QUICK) < 0) {
+		cb_data->errors++;
+		return;
+	}
+
+	/* Filter 1: blobs only */
+	if (type != OBJ_BLOB) {
+		cb_data->skipped_non_blob++;
+		return;
+	}
+
+	/* Pass 2: inflated size, blobs only */
+	oi = (struct object_info) OBJECT_INFO_INIT;
+	oi.sizep = &size;
+
+	if (odb_read_object_info_extended(cb_data->repo->objects, oid, &oi,
+					  OBJECT_INFO_SKIP_FETCH_OBJECT) < 0) {
+		cb_data->errors++;
+		return;
+	}
+
+	/* Filter 2: size threshold */
+	if (cb_data->opts->min_size > 0 && size < cb_data->opts->min_size) {
+		cb_data->skipped_small++;
+		return;
+	}
+
+	/* Filter 3: skip indexed blobs if the option is set */
+	if (cb_data->opts->skip_indexed && cb_data->index_oids) {
+		if (oid_array_lookup(cb_data->index_oids, oid) >= 0) {
+			cb_data->skipped_indexed++;
+			return;
+		}
+	}
+
+	candidate_list_append(cb_data->candidates, oid, size);
+}
