@@ -1,3 +1,6 @@
+#include "hash.h"
+#include "odb.h"
+#include "packfile.h"
 #define USE_THE_REPOSITORY_VARIABLE
 
 #include "builtin.h"
@@ -119,7 +122,7 @@ static void build_index_oids(struct repository *repo, struct oid_array *out)
 struct enumeration_cb_data {
 	struct repository *repo;
 	const struct enumeration_opts *opts;
-	const struct oid_array *index_oids; // null when skip_indexed =0
+	struct oid_array *index_oids; // null when skip_indexed =0
 	struct candidate_list *candidates;
 
 	/*
@@ -166,3 +169,51 @@ struct enumeration_cb_data {
  *
  * the extra delta-expansion cost is saved with pass1
  */
+
+static void process_one_object(struct enumeration_cb_data *cb_data,
+	const struct object_id *oid)
+{
+	struct object_info oi = OBJECT_INFO_INIT;
+	enum object_type type = OBJ_BAD;
+	unsigned long size = 0;
+
+	if(is_promisor_object(cb_data->repo, oid)) {
+		cb_data->skipped_promisor++;
+		return;
+	}
+
+	oi.typep = &type;
+	oi.sizep = NULL;
+
+	if(odb_read_object_info_extended(cb_data->repo->objects, oid, &oi, OBJECT_INFO_SKIP_FETCH_OBJECT | OBJECT_INFO_QUICK) < 0) {
+		cb_data->errors++;
+		return;
+	}
+
+	if(type!= OBJ_BLOB) {
+		cb_data->skipped_non_blob++;
+		return;
+	}
+
+	oi = (struct object_info) OBJECT_INFO_INIT;
+	oi.sizep = &size;
+
+	if(odb_read_object_info_extended(cb_data->repo->objects, oid, &oi, OBJECT_INFO_SKIP_FETCH_OBJECT) <0 ) {
+		cb_data->errors++;
+		return;
+	}
+
+	if(cb_data->opts->min_size > 0 && size < cb_data->opts->min_size) {
+		cb_data->skipped_small++;
+		return;
+	}
+
+	if(cb_data->opts->skip_indexed && cb_data->index_oids) {
+		if(oid_array_lookup(cb_data->index_oids, oid) >= 0) {
+			cb_data->skipped_indexed++;
+			return;
+		}
+	}
+
+	candidate_list_append(cb_data->candidates, oid, size);
+}
