@@ -72,9 +72,11 @@ static void candidate_list_append(struct candidate_list *list,
 struct enumeration_opts {
 	unsigned long min_size;
 	int skip_indexed;
+
+	int verbose;
 };
 
-#define ENUMERATION_OPTS_INIT { 0 , 1 }
+#define ENUMERATION_OPTS_INIT { 0 , 1 , 0}
 
 /*
  * walk the current index once and collect every regular-file blob oid
