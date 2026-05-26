@@ -136,7 +136,7 @@ struct enumeration_cb_data {
  * process_one_object - apply all the filters to a single oid
  *
  * process each object and chek the following:
- * 1. size>min_size
+ * 1. size>=min_size
  * 2. is present in index
  * 3. has promisor_remote configured
  *
