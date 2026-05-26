@@ -122,6 +122,9 @@ struct enumeration_cb_data {
 	const struct oid_array *index_oids; // null when skip_indexed =0
 	struct candidate_list *candidates;
 
+	/*
+	 * diagnostics for verbose to return info abouut enumeration data
+	 */
 	unsigned long skipped_non_blob;
 	unsigned long skipped_promisor;
 	unsigned long skipped_small;
