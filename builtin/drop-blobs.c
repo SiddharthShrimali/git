@@ -131,3 +131,38 @@ struct enumeration_cb_data {
 	unsigned long skipped_indexed;
 	unsigned long errors;
 };
+
+/*
+ * process_one_object - apply all the filters to a single oid
+ *
+ * process each object and chek the following:
+ * 1. size>min_size
+ * 2. is present in index
+ * 3. has promisor_remote configured
+ *
+ * safety--
+ * every call to odb_read_object_info_extended() passes
+ * OBJECT_INFO_SKIP_FETCH_OBJECT
+ *
+ * Every call to odb_read_object_info_extended() passes
+ * OBJECT_INFO_SKIP_FETCH_OBJECT. without this flag git would
+ * transparently contact the promisor remote for th misssing oid
+ * turning a local enumeration into a lazy_fetch.
+ *
+ * remove_fetched_oids() in promisor-remote.c follows the same
+ * pattern as this
+ *
+ *
+ * two-pass size--
+ *
+ * pass1: type lookup with OBJECT_INFO_QUUICK
+ * 	OBJECT_INFO_QUICK skips delta-chain expansion and returns
+ * 	the stored compressed size. we only need the type here to
+ * 	discard commits, tree and tags before any further work
+ *
+ * pass 2: inflated size lookup without OBJECT_INFO_QUICK - only blobs
+ * 	--min-size should be compared with the uncompressed (inflated)
+ * 	size.
+ *
+ * the extra delta-expansion cost is saved with pass1
+ */
