@@ -3,6 +3,12 @@
 #include "repository.h"
 #include "run-command.h"
 #include "string-list.h"
+#include "hex.h"
+#include "packfile.h"
+#include "list-objects-filter-options.h"
+#include "list-objects-filter.h"
+#include "odb.h"
+#include "promisor-remote.h"
 
 int write_filtered_pack(const struct write_pack_opts *opts,
 			struct existing_packs *existing,
@@ -48,4 +54,101 @@ int write_filtered_pack(const struct write_pack_opts *opts,
 
 	return finish_pack_objects_cmd(existing->repo->hash_algo, opts, &cmd,
 				       names);
+}
+
+struct collect_cb_data {
+	struct repository *repo;
+	struct oidset *set;
+};
+
+static int collect_promisor_blob(const struct object_id *oid,
+		struct object_info *oi UNUSED,
+		void *cb_data)
+{
+	struct collect_cb_data *data = cb_data;
+	struct object_info info = OBJECT_INFO_INIT;
+	enum object_type type;
+
+	info.typep = &type;
+
+	/*
+	 * Use OBJECT_INFO_SKIP_FETCH_OBJECT to avoid triggering a
+	 * lazy fetch while collecting promisor blobs.
+	 */
+	if (odb_read_object_info_extended(data->repo->objects, oid, &info,
+			OBJECT_INFO_SKIP_FETCH_OBJECT) < 0)
+		return 0;
+
+	if (type == OBJ_BLOB)
+		oidset_insert(data->set, oid);
+
+	return 0;
+}
+
+int enumerate_promisor_blobs(struct repository *repo,
+			const struct list_objects_filter_options *filter,
+			int dry_run)
+{
+	struct oidset all_promisor_blobs = OIDSET_INIT;
+	struct oidset to_drop = OIDSET_INIT;
+	struct collect_cb_data cb = {
+		.repo = repo,
+		.set = &all_promisor_blobs
+	};
+	struct oidset_iter iter;
+	const struct object_id *oid;
+	int ret = 0;
+
+	/*
+	 * Only blob:limit=<n> is supported for now. Reject other
+	 * filter choices early, before walking the object database.
+	 */
+	if (filter->choice != LOFC_BLOB_LIMIT)
+		die(_("--drop-filtered only supports --filter=blob:limit=<n> for now"));
+
+	/*
+	 * Without a promisor remote there is nowhere to re-fetch the
+	 * dropped objects from, so dropping them would be permanent
+	 * data loss. Refuse to run in that case.
+	 */
+	if (!repo_has_promisor_remote(repo))
+        	die(_("--drop-filtered requires a promisor remote"));
+
+	/*
+	 * Walk only promisor objects. Every object visited here is
+	 * guaranteed to be recoverable from the promisor remote, so
+	 * it is safe to drop.
+	 *
+	 * We do not use write_filtered_pack() here because git repack
+	 * routes promisor objects through repack_promisor_objects()
+	 * before the filter machinery runs, so the filtered pack never
+	 * contains promisor blobs. Direct enumeration via
+	 * ODB_FOR_EACH_OBJECT_PROMISOR_ONLY is the correct approach.
+	 */
+	ret = odb_for_each_object(repo->objects, NULL,
+			collect_promisor_blob, &cb,
+			ODB_FOR_EACH_OBJECT_PROMISOR_ONLY);
+	if (ret)
+		goto cleanup;
+
+	/*
+	 * Apply the filter to find which blobs exceed the threshold.
+	 */
+	ret = list_objects_filter__filter_oidset(repo,
+		(struct list_objects_filter_options *)filter,
+		&all_promisor_blobs,
+		&to_drop);
+	if (ret)
+		goto cleanup;
+
+	if (dry_run) {
+		oidset_iter_init(&to_drop, &iter);
+		while ((oid = oidset_iter_next(&iter)))
+			printf("%s\n", oid_to_hex(oid));
+	}
+
+cleanup:
+	oidset_clear(&all_promisor_blobs);
+	oidset_clear(&to_drop);
+	return ret;
 }
