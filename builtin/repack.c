@@ -589,19 +589,34 @@ int cmd_repack(int argc,
 	}
 
 	if (po_args.filter_options.choice) {
-		struct write_pack_opts opts = {
-			.po_args = &po_args,
-			.destination = filter_to,
-			.packdir = packdir,
-			.packtmp = packtmp,
-		};
+		if (drop_filtered) {
+			/*
+			 * Enumerate promisor objects directly rather than
+			 * going through write_filtered_pack(). The filter
+			 * machinery cannot see promisor objects because
+			 * repack_promisor_objects() handles them separately
+			 * before the filter runs.
+			 */
+			ret = enumerate_promisor_blobs(repo,
+					&po_args.filter_options,
+					dry_run);
+			if (ret)
+				goto cleanup;
+		} else {
+			struct write_pack_opts opts = {
+				.po_args = &po_args,
+				.destination = filter_to,
+				.packdir = packdir,
+				.packtmp = packtmp,
+			};
 
-		if (!opts.destination)
-			opts.destination = packtmp;
+			if (!opts.destination)
+				opts.destination = packtmp;
 
-		ret = write_filtered_pack(&opts, &existing, &names);
-		if (ret)
-			goto cleanup;
+			ret = write_filtered_pack(&opts, &existing, &names);
+			if (ret)
+				goto cleanup;
+		}
 	}
 
 	string_list_sort(&names);
