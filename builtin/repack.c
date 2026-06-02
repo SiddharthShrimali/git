@@ -268,6 +268,14 @@ int cmd_repack(int argc,
 	if (dry_run && !drop_filtered)
 		die(_("--dry-run only takes effect with --drop-filtered"));
 
+	if (drop_filtered && !(pack_everything & ALL_INTO_ONE))
+		die(_("--drop-filtered requires -a"));
+
+	die_for_incompatible_opt2(drop_filtered, "--drop-filtered",
+		write_bitmaps > 0, "--write-bitmap-index");
+	if (drop_filtered)
+		write_bitmaps = 0;
+
 	if (delete_redundant && repo->repository_format_precious_objects)
 		die(_("cannot delete packs in a precious-objects repo"));
 
@@ -573,6 +581,20 @@ int cmd_repack(int argc,
 		ret = write_filtered_pack(&opts, &existing, &names);
 		if (ret)
 			goto cleanup;
+
+		if (drop_filtered) {
+			ret = enumerate_filtered_objects(repo, packtmp, &names, dry_run);
+			if (ret)
+				goto cleanup;
+
+			/*
+			 * Remove the filtered pack from the names list so the install
+			 * loop below does not move it into packdir. The pack's contents
+			 * contain the would-be-dropped objects and should not become a
+			 * permanent part of the repository.
+			 */
+			unsorted_string_list_delete_item(&names, names.nr - 1, 1);
+		}
 	}
 
 	string_list_sort(&names);

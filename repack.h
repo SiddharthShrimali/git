@@ -165,6 +165,11 @@ int write_filtered_pack(const struct write_pack_opts *opts,
 			struct existing_packs *existing,
 			struct string_list *names);
 
+int enumerate_filtered_objects(struct repository *repo,
+				const char *packtmp,
+				struct string_list *names,
+				int dry_run);
+
 int write_cruft_pack(const struct write_pack_opts *opts,
 		     const char *cruft_expiration,
 		     unsigned long combine_cruft_below_size,
