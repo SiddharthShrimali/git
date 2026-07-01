@@ -56,12 +56,6 @@ test_expect_success '--dry-run only takes effect with --drop-filtered' '
 	test_grep "dry-run only takes effect with --drop-filtered" err
 '
 
-test_expect_success '--drop-filtered without --dry-run is rejected' '
-	test_must_fail git -C plain.git repack --drop-filtered \
-		--filter=blob:limit=1k -a 2>err &&
-	test_grep "drop-filtered doesn.t work without --dry-run yet" err
-'
-
 test_expect_success '--drop-filtered requires -a' '
 	test_must_fail git -C plain.git repack --drop-filtered \
 		--filter=blob:limit=1k --dry-run 2>err &&
@@ -134,6 +128,18 @@ test_expect_success '--dry-run does not remove the filtered objects' '
 
 	# candidate blob must still be present after a dry run.
 	git -C repo cat-file -e "$BIG"
+'
+
+test_expect_success '--drop-filtered removes the promisor blob locally' '
+	BIG=$(cat big_oid) &&
+	SMALL=$(cat small_oid) &&
+
+	git -C repo -c repack.writeBitmaps=false \
+		repack --drop-filtered --filter=blob:limit=1k -a &&
+
+	git -C repo cat-file --batch-all-objects --batch-check="%(objectname)" >present &&
+	! grep -q "$BIG" present &&
+	grep -q "$SMALL" present
 '
 
 test_done

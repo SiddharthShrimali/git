@@ -87,16 +87,13 @@ static int collect_promisor_blob(const struct object_id *oid,
 
 int enumerate_promisor_blobs(struct repository *repo,
 			const struct list_objects_filter_options *filter,
-			int dry_run)
+			struct oidset *to_drop)
 {
 	struct oidset all_promisor_blobs = OIDSET_INIT;
-	struct oidset to_drop = OIDSET_INIT;
 	struct collect_cb_data cb = {
 		.repo = repo,
 		.set = &all_promisor_blobs
 	};
-	struct oidset_iter iter;
-	const struct object_id *oid;
 	int ret = 0;
 
 	/*
@@ -122,22 +119,14 @@ int enumerate_promisor_blobs(struct repository *repo,
 
 	/*
 	 * Apply the filter to find which blobs exceed the threshold.
+	 * The caller has to_drop and is responsible for clearing it.
 	 */
 	ret = list_objects_filter__filter_oidset(repo,
 		(struct list_objects_filter_options *)filter,
 		&all_promisor_blobs,
-		&to_drop);
-	if (ret)
-		goto cleanup;
-
-	if (dry_run) {
-		oidset_iter_init(&to_drop, &iter);
-		while ((oid = oidset_iter_next(&iter)))
-			printf("%s\n", oid_to_hex(oid));
-	}
+		to_drop);
 
 cleanup:
 	oidset_clear(&all_promisor_blobs);
-	oidset_clear(&to_drop);
 	return ret;
 }
