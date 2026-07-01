@@ -16,6 +16,8 @@
 #include "repack.h"
 #include "shallow.h"
 #include "list-objects-filter-options.h"
+#include "oidset.h"
+#include "hex.h"
 
 #define ALL_INTO_ONE 1
 #define LOOSEN_UNREACHABLE 2
@@ -144,6 +146,7 @@ int cmd_repack(int argc,
 	struct string_list_item *item;
 	struct string_list names = STRING_LIST_INIT_DUP;
 	struct existing_packs existing = EXISTING_PACKS_INIT;
+	struct oidset drop_oids = OIDSET_INIT;
 	struct pack_geometry geometry = { 0 };
 	struct tempfile *refs_snapshot = NULL;
 	int i, ret;
@@ -270,9 +273,6 @@ int cmd_repack(int argc,
 		die(_("--dry-run only takes effect with --drop-filtered"));
 
 	if (drop_filtered) {
-		if (!dry_run)
-			die(_("--drop-filtered doesn't work without --dry-run yet"));
-
 		if (!po_args.filter_options.choice)
 			die(_("--drop-filtered requires --filter"));
 
@@ -295,6 +295,28 @@ int cmd_repack(int argc,
 			die(_("--drop-filtered requires a promisor remote"));
 
 		write_bitmaps = 0;
+
+		/*
+		 * Dropping objects means rebuilding the promisor packs
+		 * without them and then removing the old packs, so the
+		 * redundant packs must be deleted. Imply -d on a real run.
+		 */
+		if (!dry_run)
+			delete_redundant = 1;
+
+		ret = enumerate_promisor_blobs(repo, &po_args.filter_options, &drop_oids);
+
+		if (ret)
+			goto cleanup;
+
+		if (dry_run) {
+			struct oidset_iter iter;
+			const struct object_id *oid;
+
+			oidset_iter_init(&drop_oids, &iter);
+			while ((oid = oidset_iter_next(&iter)))
+				printf("%s\n", oid_to_hex(oid));
+		}
 	}
 
 	if (delete_redundant && repo->repository_format_precious_objects)
@@ -407,7 +429,8 @@ int cmd_repack(int argc,
 		strvec_push(&cmd.args, "--delta-islands");
 
 	if (pack_everything & ALL_INTO_ONE) {
-		repack_promisor_objects(repo, &po_args, &names, packtmp, NULL);
+		repack_promisor_objects(repo, &po_args, &names, packtmp,
+			(drop_filtered && !dry_run) ? &drop_oids : NULL);
 
 		if (existing_packs_has_non_kept(&existing) &&
 		    delete_redundant &&
@@ -588,35 +611,20 @@ int cmd_repack(int argc,
 		}
 	}
 
-	if (po_args.filter_options.choice) {
-		if (drop_filtered) {
-			/*
-			 * Enumerate promisor objects directly rather than
-			 * going through write_filtered_pack(). The filter
-			 * machinery cannot see promisor objects because
-			 * repack_promisor_objects() handles them separately
-			 * before the filter runs.
-			 */
-			ret = enumerate_promisor_blobs(repo,
-					&po_args.filter_options,
-					dry_run);
-			if (ret)
-				goto cleanup;
-		} else {
-			struct write_pack_opts opts = {
-				.po_args = &po_args,
-				.destination = filter_to,
-				.packdir = packdir,
-				.packtmp = packtmp,
-			};
+	if (po_args.filter_options.choice && !drop_filtered) {
+		struct write_pack_opts opts = {
+			.po_args = &po_args,
+			.destination = filter_to,
+			.packdir = packdir,
+			.packtmp = packtmp,
+		};
 
-			if (!opts.destination)
-				opts.destination = packtmp;
+		if (!opts.destination)
+			opts.destination = packtmp;
 
-			ret = write_filtered_pack(&opts, &existing, &names);
-			if (ret)
-				goto cleanup;
-		}
+		ret = write_filtered_pack(&opts, &existing, &names);
+		if (ret)
+			goto cleanup;
 	}
 
 	string_list_sort(&names);
@@ -694,6 +702,7 @@ int cmd_repack(int argc,
 cleanup:
 	string_list_clear(&keep_pack_list, 0);
 	string_list_clear(&names, 1);
+	oidset_clear(&drop_oids);
 	existing_packs_release(&existing);
 	pack_geometry_release(&geometry);
 	pack_objects_args_release(&po_args);
