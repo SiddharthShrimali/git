@@ -168,8 +168,8 @@ int write_filtered_pack(const struct write_pack_opts *opts,
 			struct string_list *names);
 
 int enumerate_promisor_blobs(struct repository *repo,
-			       const struct list_objects_filter_options *filter,
-			       int dry_run);
+			     const struct list_objects_filter_options *filter,
+			     struct oidset *to_drop);
 
 int write_cruft_pack(const struct write_pack_opts *opts,
 		     const char *cruft_expiration,
