@@ -7,6 +7,55 @@
 #include "repository.h"
 #include "run-command.h"
 #include "oidset.h"
+#include "date.h"
+#include "promisor-remote.h"
+#include "strbuf.h"
+
+void append_drop_log(struct repository *repo,
+		     const struct oidset *dropped,
+		     const char *filter_spec)
+{
+	char *path;
+	struct oidset_iter iter;
+	const struct object_id *oid;
+	FILE *fp;
+	struct strbuf stamp = STRBUF_INIT;
+	struct promisor_remote *pr;
+	const char *remote;
+
+	if (!oidset_size(dropped))
+		return;
+
+	datestamp(&stamp);
+	pr = repo_promisor_remote_find(repo, NULL);
+	remote = pr ? pr->name : "";
+
+	path = repo_git_path(repo, "objects/info/promisor-dropped");
+
+	if (safe_create_leading_directories(repo, path)) {
+		warning(_("could not create leading directories for '%s'"), path);
+		goto out;
+	}
+
+	fp = fopen(path, "a");
+	if (!fp) {
+		warning_errno(_("could not open '%s'"), path);
+		goto out;
+	}
+
+	oidset_iter_init(dropped, &iter);
+	while ((oid = oidset_iter_next(&iter)))
+		fprintf(fp, "%s %s filter=%s remote=%s\n",
+			oid_to_hex(oid), stamp.buf,
+			filter_spec ? filter_spec : "",
+			remote);
+
+	fclose(fp);
+
+out:
+	strbuf_release(&stamp);
+	free(path);
+}
 
 struct write_oid_context {
 	struct child_process *cmd;
