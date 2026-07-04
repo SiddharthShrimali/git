@@ -171,6 +171,10 @@ int enumerate_promisor_blobs(struct repository *repo,
 			     const struct list_objects_filter_options *filter,
 			     struct oidset *to_drop);
 
+void append_drop_log(struct repository *repo,
+		     const struct oidset *dropped,
+		     const char *filter_spec);
+
 int write_cruft_pack(const struct write_pack_opts *opts,
 		     const char *cruft_expiration,
 		     unsigned long combine_cruft_below_size,

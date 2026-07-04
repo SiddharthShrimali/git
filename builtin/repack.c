@@ -702,6 +702,10 @@ int cmd_repack(int argc,
 		write_midx_file(files->packed, NULL, NULL, flags);
 	}
 
+	if (drop_filtered && !dry_run)
+		append_drop_log(repo, &drop_oids,
+			expand_list_objects_filter_spec(&po_args.filter_options));
+
 cleanup:
 	string_list_clear(&keep_pack_list, 0);
 	string_list_clear(&names, 1);
